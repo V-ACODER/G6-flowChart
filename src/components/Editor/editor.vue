@@ -5,10 +5,10 @@
       <button @click="endRunning()" v-show="running">结束</button>
       <button @click="zoomGraph(-1)">缩小</button>
       <button @click="zoomGraph(1)">放大</button>
-      <button @click="setFitView()">自动适应</button>
+      <button @click="setFitView()">自动排列</button>
       <button v-if="isFullScreen" @click="setFullScreen(false)">收起</button>
       <button v-else @click="setFullScreen(true)">全屏</button>
-      <button @click="addNewWindow()" :disabled="windows.length > 5">新建窗口</button>
+      <button @click="addNewWindow()" :disabled="windows.length >13">新建窗口</button>
     </header>
     <div class="editor-container">
       <ul class="left-menu" id="leftMenu">
@@ -28,14 +28,14 @@
         </li>
       </ul>
 
-      <div class="main-section">
+      <div class="main-section" :style="{width: (documentWidth - (isFullScreen?4:408)) + 'px'}">
         <el-tabs type="card" @tab-click="checkoutWindow" v-model="activeWindow">
           <el-tab-pane>
-            <span slot="label">窗口1</span>
-            <div id="graph-container" class="graph-container" :name="0"></div>
+            <span slot="label" class="window-title">窗口1</span>
+            <div id="graph-container0" class="graph-container" :name="0"></div>
           </el-tab-pane>
           <el-tab-pane v-for="(w, index) in windows" :key="index" :label="'窗口'+w">
-            <span slot="label">
+            <span slot="label" class="window-title">
               窗口{{w}}
               <i class="el-icon-circle-close" @click="closeWindow(w)"></i>
             </span>
@@ -44,7 +44,7 @@
         </el-tabs>
       </div>
       <div class="right-panel" id="rightPanel">
-        <el-tabs v-model="activeName" type="card" @tab-click="handleClick">
+        <el-tabs v-model="activeName" type="card">
           <el-tab-pane v-for="(item, index) in rightMenu" :key="index" :label="item" :name="item">名称</el-tab-pane>
         </el-tabs>
       </div>
@@ -115,7 +115,9 @@ export default {
       documentWidth: 0,
       documentHeight: 0,
       windows: [],
-      activeWindow: 0
+      activeWindow: 0,
+      containerName: "graph-container0",
+      graphs: {}
     };
   },
   created() {},
@@ -138,7 +140,7 @@ export default {
       const xy = graph.getPointByClient(e.x, e.y);
       data.x = xy.x;
       data.y = xy.y;
-      data.id = data.type + uniqueId();
+      data.id = "model-rect" + uniqueId();
       graph.addItem("node", data);
     },
 
@@ -153,30 +155,61 @@ export default {
         // 设定该自定义行为需要监听的事件及其响应函数
         getEvents() {
           return {
-            "node:click": "onClick", // 监听事件 node:click，响应函数是 onClick
+            "node:mousedown": "onMousedown",
+            mouseup: "onMouseup",
             mousemove: "onMousemove", // 监听事件 mousemove，响应函数是 onMousemove
             "edge:click": "onEdgeClick" // 监听事件 edge:click，响应函数是 onEdgeClick
           };
         },
-        // getEvents 中定义的 'node:click' 的响应函数
-        onClick(ev) {
-          const type = ev.shape.attrs.cursor;
+        onMouseup(ev) {
+          const type = ev.shape ? ev.shape.attrs.cursor : null;
           if (type === "crosshair") {
             const node = ev.item;
             // 鼠标当前点击的节点的位置
-            const point = { x: ev.x, y: ev.y };
-            const model = node.getModel();
-            if (this.addingEdge && this.edge) {
-              this.graph.updateItem(this.edge, {
-                target: model.id
-              });
+            const targetId = node.getModel().id;
+            const sourceId = this.edge._cfg.source._cfg.id;
+            let edges = this.graph.findAll("edge", item => item);
+            console.log(edges);
+            let flag = false;
+            edges.map(item => {
+              console.log(item._cfg.source._cfg.id, item._cfg, item);
+              // if (
+              //   item._cfg.source._cfg.id === sourceId &&
+              //   item._cfg.target._cfg.id === targetId
+              // ) {
+              //   flag = true;
+              // }
+            });
 
+            if (
+              this.addingEdge &&
+              this.edge &&
+              sourceId !== targetId &&
+              !flag
+            ) {
+              this.graph.updateItem(this.edge, {
+                target: targetId
+              });
               this.edge = null;
               this.addingEdge = false;
-            } else {
+            }
+          } else {
+            if (this.addingEdge && this.edge) {
+              this.graph.removeItem(this.edge);
+              this.edge = null;
+              this.addingEdge = false;
+            }
+          }
+        },
+        onMousedown(ev) {
+          const type = ev.shape ? ev.shape.attrs.cursor : null;
+          if (type === "crosshair") {
+            if (!this.addingEdge || !this.edge) {
+              // 鼠标当前点击的节点的位置
               // 在图上新增一条边，结束点是鼠标当前点击的节点的位置
+              const point = { x: ev.x, y: ev.y };
               this.edge = this.graph.addItem("edge", {
-                source: model.id,
+                source: ev.item.defaultCfg.id,
                 target: point
               });
               this.addingEdge = true;
@@ -258,8 +291,8 @@ export default {
         "cubic"
       ); // 该自定义边继承了内置三阶贝塞尔曲线边 cubic
 
-      this.graph = new G6.Graph({
-        container: "graph-container",
+      this.graph = this.graphs[this.activeWindow] = new G6.Graph({
+        container: this.containerName,
         height: height,
         width: width,
         fitView: true,
@@ -295,9 +328,10 @@ export default {
           linkPoints: {
             top: true,
             bottom: true,
-            fill: "#fff",
-            lineWidth: 2,
-            cursor: "crosshair"
+            lineWidth: 24,
+            stroke: "transparent",
+            cursor: "crosshair",
+            size: 5
           },
           anchorPoints: [
             [0.5, 0],
@@ -413,19 +447,46 @@ export default {
           stateIcon: {
             show: true,
             img: "/images/ok.png"
+          },
+          linkPoints: {
+            top: true,
+            bottom: true,
+            lineWidth: 24,
+            stroke: "transparent",
+            cursor: "crosshair",
+            size: 10
           }
         });
       }, 1000);
       setTimeout(() => {
-        this.graph.updateItem(adges[adges.length - 1], {
-          type: "cubic-vertical"
-        });
         this.graph.updateItem(nodes[nodes.length - 1], {
           stateIcon: {
             show: true,
             img: "/images/ok.png"
+          },
+          linkPoints: {
+            top: true,
+            bottom: true,
+            lineWidth: 24,
+            stroke: "transparent",
+            cursor: "crosshair",
+            size: 10
           }
         });
+
+        let length = nodes.length - 1 - adges.length;
+        if (length === 1) {
+          this.graph.updateItem(adges[adges.length - 1], {
+            type: "cubic-vertical"
+          });
+        } else {
+          adges.forEach(item => {
+            this.graph.updateItem(item, {
+              type: "cubic-vertical"
+            });
+          });
+        }
+        this.running = false;
       }, 2000);
     },
     animateEdge(adges, nodes, index) {
@@ -440,6 +501,14 @@ export default {
                 stateIcon: {
                   show: true,
                   img: "/images/ok.png"
+                },
+                linkPoints: {
+                  top: true,
+                  bottom: true,
+                  lineWidth: 24,
+                  stroke: "transparent",
+                  cursor: "crosshair",
+                  size: 10
                 }
               });
             }
@@ -450,6 +519,14 @@ export default {
               stateIcon: {
                 show: true,
                 img: "/images/wait.png"
+              },
+              linkPoints: {
+                top: true,
+                bottom: true,
+                lineWidth: 24,
+                stroke: "transparent",
+                cursor: "crosshair",
+                size: 10
               }
             });
             resolve();
@@ -476,7 +553,10 @@ export default {
       }
     },
     setFitView() {
-      this.graph.fitView(10);
+      this.graph.updateLayout({
+        type: "dagre"
+      });
+      this.graph.fitView([0, 10, 30, 10]);
     },
     setFullScreen(bool) {
       this.isFullScreen = bool;
@@ -522,7 +602,13 @@ export default {
     closeWindow(index) {
       this.windows = this.windows.filter(item => item !== index);
     },
-    checkoutWindow() {}
+    checkoutWindow() {
+      this.containerName = "graph-container" + this.activeWindow;
+      this.graph = this.graphs[this.activeWindow];
+      if (!this.graph) {
+        this.init();
+      }
+    }
   }
 };
 </script>
@@ -534,6 +620,7 @@ export default {
   button {
     padding: 2px 6px;
     margin-right: 10px;
+    user-select: none;
   }
 }
 .editor-container {
@@ -601,6 +688,8 @@ export default {
 .main-section {
   border: 2px solid grey;
   border-top: 0;
-  width: calc(100% - 408);
+}
+.window-title {
+  user-select: none;
 }
 </style>
