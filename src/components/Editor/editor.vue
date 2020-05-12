@@ -5,8 +5,8 @@
       <button @click="endRunning()" v-show="running">结束</button>
       <button @click="zoomGraph(-1)">缩小</button>
       <button @click="zoomGraph(1)">放大</button>
-      <button @click="setFitView()">自动适应</button>
-      <button>全屏</button>
+      <!-- <button @click="setFitView()">自动适应</button> -->
+      <!-- <button>全屏</button> -->
     </header>
     <div class="editor-container">
       <ul class="left-menu">
@@ -27,6 +27,14 @@
       </ul>
       <div id="graph-container" class="graph-container"></div>
       <div class="right-panel"></div>
+      <ul class="el-scrollbar__view el-select-dropdown__list context-menu" id="contextMenu">
+        <li
+          class="el-select-dropdown__item"
+          v-for="menu in menus"
+          :key="menu.key"
+          @click="handleClick(menu)"
+        >{{menu.name}}</li>
+      </ul>
     </div>
   </div>
 </template>
@@ -41,15 +49,15 @@ export default {
       offsetY: 0,
       list: [
         {
-          label: "mysql数据同步",
+          label: "数据源",
           icon: "/images/database.png"
         },
         {
-          label: "hive数据同步",
+          label: "归一化",
           icon: "/images/database.png"
         },
         {
-          label: "特征选择",
+          label: "调模型",
           icon: "/images/database.png"
         }
       ],
@@ -57,7 +65,12 @@ export default {
         type: Object,
         default: () => {}
       },
-      running: false
+      running: false,
+      menus: [
+        { key: 1, name: "重命名" },
+        { key: 2, name: "删除" }
+      ],
+      selectedItem: null
     };
   },
   created() {},
@@ -221,7 +234,8 @@ export default {
             offset: 0
           },
           stateIcon: {
-            show: true
+            show: true,
+            img: "/images/upload.png"
           },
           linkPoints: {
             top: true,
@@ -269,33 +283,93 @@ export default {
       if (data) {
         this.graph.read(data);
       }
+      const menu = document.getElementById("contextMenu");
+      this.graph.on("node:contextmenu", evt => {
+        evt.preventDefault();
+        evt.stopPropagation();
+        menu.style.left = `${evt.clientX}px`;
+        menu.style.top = `${evt.clientY}px`;
+        menu.style.display = "block";
+        this.selectedItem = evt.item;
+      });
+
+      this.graph.on("node:mouseleave", () => {
+        menu.style.display = "none";
+        this.selectedItem = null;
+      });
+    },
+    handleClick(item) {
+      const menu = document.getElementById("contextMenu");
+      menu.style.display = "none";
+      switch (item.key) {
+        case 1:
+          this.graph.updateItem(this.selectedItem, {
+            label: "abc"
+          });
+          break;
+        case 2:
+          this.graph.remove(this.selectedItem);
+          break;
+      }
     },
     async runGraph() {
       this.running = true;
       const graph = this.graph;
-      let adges = [];
-      graph.findAll("edge", item => {
-        adges.push(item);
+      let adges = graph.findAll("edge", item => item);
+      let nodes = graph.findAll("node", item => item);
+      this.graph.updateItem(adges[0], {
+        type: "line-dash"
       });
-      for (let i = 0; i < adges.length; i++) {
-        await this.animateEdge(adges[i], adges[i - 1]);
+      for (let i = 0; i < nodes.length; i++) {
+        await this.animateEdge(adges, nodes, i);
       }
+      setTimeout(() => {
+        this.graph.updateItem(nodes[nodes.length - 2], {
+          stateIcon: {
+            show: true,
+            img: "/images/ok.png"
+          }
+        });
+      }, 1000);
+      setTimeout(() => {
+        this.graph.updateItem(adges[adges.length - 1], {
+          type: "cubic-vertical"
+        });
+        this.graph.updateItem(nodes[nodes.length - 1], {
+          stateIcon: {
+            show: true,
+            img: "/images/ok.png"
+          }
+        });
+      }, 2000);
     },
-    animateEdge(item, lastItem) {
+    animateEdge(adges, nodes, index) {
       return new Promise(resolve => {
         setTimeout(
           () => {
-            if (lastItem) {
-              this.graph.updateItem(lastItem, {
+            if (index > 0) {
+              this.graph.updateItem(adges[index - 2], {
                 type: "cubic-vertical"
               });
+              this.graph.updateItem(nodes[index - 1], {
+                stateIcon: {
+                  show: true,
+                  img: "/images/ok.png"
+                }
+              });
             }
-            this.graph.updateItem(item, {
+            this.graph.updateItem(adges[index - 1], {
               type: "line-dash"
+            });
+            this.graph.updateItem(nodes[index], {
+              stateIcon: {
+                show: true,
+                img: "/images/wait.png"
+              }
             });
             resolve();
           },
-          lastItem ? 2000 : 1000
+          index > 0 ? 1000 : 0
         );
       });
     },
@@ -317,7 +391,7 @@ export default {
       }
     },
     setFitView() {
-      this.graph.set("fitView", true);
+      this.graph.updateLayout({ fitView: true });
     }
   }
 };
@@ -371,5 +445,28 @@ export default {
 .right-panel {
   width: 200px;
   background-color: rgb(248, 248, 248);
+}
+.context-menu {
+  position: absolute;
+  border: 1px solid #e4e7ed;
+  border-radius: 4px;
+  background-color: #fff;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+  box-sizing: border-box;
+  margin: 5px 0;
+  z-index: 1;
+  display: none;
+}
+
+.context-menu li {
+  cursor: pointer;
+  font-size: 12px;
+  height: 28px;
+  line-height: 28px;
+  list-style-type: none;
+  padding: 0 10px;
+}
+.context-menu li:hover {
+  background-color: #f5f7fa;
 }
 </style>
