@@ -6,10 +6,11 @@
       <button @click="zoomGraph(-1)">缩小</button>
       <button @click="zoomGraph(1)">放大</button>
       <button @click="setFitView()">自动适应</button>
-      <button>全屏</button>
+      <button v-if="isFullScreen" @click="setFullScreen(false)">收起</button>
+      <button v-else @click="setFullScreen(true)">全屏</button>
     </header>
     <div class="editor-container">
-      <ul class="left-menu">
+      <ul class="left-menu" id="leftMenu">
         <li
           v-for="(item, index) in list"
           :key="index"
@@ -25,10 +26,16 @@
           {{item.label}}
         </li>
       </ul>
+
       <div id="graph-container" class="graph-container"></div>
-      <div class="right-panel">
-        <div v-for="(item, index) in rightMenu" :key="index">{{item}}</div>
+
+      <div class="right-panel" id="rightPanel">
+        <el-tabs v-model="activeName" type="card" @tab-click="handleClick">
+          <el-tab-pane v-for="(item, index) in rightMenu" :key="index" :label="item" :name="item">名称</el-tab-pane>
+        </el-tabs>
       </div>
+
+      <!-- 右击菜单 -->
       <ul class="el-scrollbar__view el-select-dropdown__list context-menu" id="contextMenu">
         <li
           class="el-select-dropdown__item"
@@ -39,9 +46,9 @@
       </ul>
     </div>
 
+    <!-- 重命名弹框 -->
     <el-dialog title="重命名" :visible.sync="dialogFormVisible">
       <el-input v-model="labelName" :placeholder="labelName" autocomplete="off"></el-input>
-
       <div slot="footer" class="dialog-footer">
         <el-button @click="dialogFormVisible = false">取 消</el-button>
         <el-button type="primary" @click="modifyLabelName">确 定</el-button>
@@ -85,9 +92,14 @@ export default {
         { key: 2, name: "删除" }
       ],
       selectedItem: null,
+      selectedEdge: null,
       rightMenu: [],
       labelName: "",
-      dialogFormVisible: false
+      dialogFormVisible: false,
+      activeName: "",
+      isFullScreen: false,
+      documentWidth: 0,
+      documentHeight: 0
     };
   },
   created() {},
@@ -113,9 +125,13 @@ export default {
       data.id = data.type + uniqueId();
       graph.addItem("node", data);
     },
+
     init() {
-      const height = document.documentElement.clientHeight - 44;
-      const width = document.documentElement.clientWidth - 404;
+      this.documentHeight = document.documentElement.clientHeight;
+      const height = this.documentHeight - 44;
+      this.documentWidth = document.documentElement.clientWidth;
+      const width = this.documentWidth - 408;
+      const _this = this;
       // 封装点击添加边的交互
       G6.registerBehavior("click-add-edge", {
         // 设定该自定义行为需要监听的事件及其响应函数
@@ -128,24 +144,27 @@ export default {
         },
         // getEvents 中定义的 'node:click' 的响应函数
         onClick(ev) {
-          const node = ev.item;
-          // 鼠标当前点击的节点的位置
-          const point = { x: ev.x, y: ev.y };
-          const model = node.getModel();
-          if (this.addingEdge && this.edge) {
-            this.graph.updateItem(this.edge, {
-              target: model.id
-            });
+          const type = ev.shape.attrs.cursor;
+          if (type === "crosshair") {
+            const node = ev.item;
+            // 鼠标当前点击的节点的位置
+            const point = { x: ev.x, y: ev.y };
+            const model = node.getModel();
+            if (this.addingEdge && this.edge) {
+              this.graph.updateItem(this.edge, {
+                target: model.id
+              });
 
-            this.edge = null;
-            this.addingEdge = false;
-          } else {
-            // 在图上新增一条边，结束点是鼠标当前点击的节点的位置
-            this.edge = this.graph.addItem("edge", {
-              source: model.id,
-              target: point
-            });
-            this.addingEdge = true;
+              this.edge = null;
+              this.addingEdge = false;
+            } else {
+              // 在图上新增一条边，结束点是鼠标当前点击的节点的位置
+              this.edge = this.graph.addItem("edge", {
+                source: model.id,
+                target: point
+              });
+              this.addingEdge = true;
+            }
           }
         },
         // getEvents 中定义的 mousemove 的响应函数
@@ -161,13 +180,14 @@ export default {
         },
         // getEvents 中定义的 'edge:click' 的响应函数
         onEdgeClick(ev) {
-          const currentEdge = ev.item;
+          _this.selectedEdge = ev.item;
+          _this.resetSelectedEdge();
           // 拖拽过程中，点击会点击到新增的边上
-          if (this.addingEdge && this.edge == currentEdge) {
-            this.graph.removeItem(this.edge);
-            this.edge = null;
-            this.addingEdge = false;
-          }
+          // if (this.addingEdge && this.edge == currentEdge) {
+          //   this.graph.removeItem(this.edge);
+          //   this.edge = null;
+          //   this.addingEdge = false;
+          // }
         }
       });
 
@@ -226,6 +246,8 @@ export default {
         container: "graph-container",
         height: height,
         width: width,
+        fitView: true,
+        fitViewPadding: 0,
         minZoom: 0.5,
         maxZoom: 2,
         defaultNode: {
@@ -258,7 +280,8 @@ export default {
             top: true,
             bottom: true,
             fill: "#fff",
-            lineWidth: 2
+            lineWidth: 2,
+            cursor: "crosshair"
           },
           anchorPoints: [
             [0.5, 0],
@@ -267,12 +290,15 @@ export default {
         },
         defaultEdge: {
           type: "cubic-vertical",
+          // sourceAnchor: 0,
+          // targetAnchor: 0,
           style: {
             endArrow: {
               path: "M 0,0 L 8,4 L 8,-4 Z",
               fill: "#F6BD16"
             },
             lineWidth: 2,
+            lineAppendWidth: 5,
             cursor: "pointer",
             stroke: "#F6BD16"
           },
@@ -284,7 +310,8 @@ export default {
           selected: {
             fill: "steelblue",
             fillOpacity: 0.1
-          }
+          },
+          hover: {}
         },
         modes: {
           default: [
@@ -313,20 +340,28 @@ export default {
         this.labelName = model.label;
       });
 
-      this.graph.on("node:mouseleave", () => {
-        menu.style.display = "none";
-        // this.selectedItem = null;
-        // this.rightMenu = [];
-      });
-
       this.graph.on("node:click", evt => {
         let item = evt.item;
         this.selectedItem = item;
         let model = item._cfg.model;
         this.rightMenu = model.rightMenu;
         this.labelName = model.label;
+        this.selectedEdge = null;
+        this.resetSelectedEdge();
+      });
+      this.graph.on("node:mouseleave", () => {
+        menu.style.display = "none";
+        // this.selectedItem = null;
+        // this.rightMenu = [];
+      });
+      this.graph.on("keyup", evt => {
+        if (evt.keyCode === 46) {
+          this.graph.remove(this.selectedEdge);
+          this.graph.remove(this.selectedItem);
+        }
       });
     },
+
     handleClick(item) {
       const menu = document.getElementById("contextMenu");
       menu.style.display = "none";
@@ -425,7 +460,40 @@ export default {
       }
     },
     setFitView() {
-      this.graph.updateLayout({ fitView: true });
+      this.graph.fitView(10);
+    },
+    setFullScreen(bool) {
+      this.isFullScreen = bool;
+      const leftMenu = document.getElementById("leftMenu");
+      const rightPanel = document.getElementById("rightPanel");
+      if (bool) {
+        leftMenu.style.display = "none";
+        rightPanel.style.display = "none";
+        this.graph.changeSize(this.documentWidth - 4, this.documentHeight - 44);
+      } else {
+        leftMenu.style.display = "block";
+        rightPanel.style.display = "block";
+        this.graph.changeSize(
+          this.documentWidth - 408,
+          this.documentHeight - 44
+        );
+      }
+    },
+    resetSelectedEdge() {
+      this.graph.findAll("edge", item => {
+        this.graph.updateItem(item, {
+          style: {
+            lineWidth: 2,
+            opacity: 1
+          }
+        });
+      });
+      this.graph.updateItem(this.selectedEdge, {
+        style: {
+          lineWidth: 4,
+          opacity: 0.3
+        }
+      });
     }
   }
 };
@@ -475,6 +543,7 @@ export default {
   position: relative;
   border: 2px solid grey;
   border-top: none;
+  cursor: pointer;
 }
 .right-panel {
   width: 200px;
