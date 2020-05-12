@@ -8,6 +8,7 @@
       <button @click="setFitView()">自动适应</button>
       <button v-if="isFullScreen" @click="setFullScreen(false)">收起</button>
       <button v-else @click="setFullScreen(true)">全屏</button>
+      <button @click="addNewWindow()" :disabled="windows.length > 5">新建窗口</button>
     </header>
     <div class="editor-container">
       <ul class="left-menu" id="leftMenu">
@@ -27,8 +28,21 @@
         </li>
       </ul>
 
-      <div id="graph-container" class="graph-container"></div>
-
+      <div class="main-section">
+        <el-tabs type="card" @tab-click="checkoutWindow" v-model="activeWindow">
+          <el-tab-pane>
+            <span slot="label">窗口1</span>
+            <div id="graph-container" class="graph-container" :name="0"></div>
+          </el-tab-pane>
+          <el-tab-pane v-for="(w, index) in windows" :key="index" :label="'窗口'+w">
+            <span slot="label">
+              窗口{{w}}
+              <i class="el-icon-circle-close" @click="closeWindow(w)"></i>
+            </span>
+            <div :id="'graph-container'+(index+1)" class="graph-container" :name="index+1"></div>
+          </el-tab-pane>
+        </el-tabs>
+      </div>
       <div class="right-panel" id="rightPanel">
         <el-tabs v-model="activeName" type="card" @tab-click="handleClick">
           <el-tab-pane v-for="(item, index) in rightMenu" :key="index" :label="item" :name="item">名称</el-tab-pane>
@@ -67,17 +81,17 @@ export default {
       offsetY: 0,
       list: [
         {
-          label: "数据源",
+          label: "数据源写入",
           icon: "/images/database.png",
           rightMenu: ["字段设置", "参数设置"]
         },
         {
-          label: "归一化",
+          label: "数据归一化",
           icon: "/images/database.png",
           rightMenu: ["执行调优"]
         },
         {
-          label: "调模型",
+          label: "XGboost",
           icon: "/images/database.png",
           rightMenu: ["字段设置"]
         }
@@ -99,7 +113,9 @@ export default {
       activeName: "",
       isFullScreen: false,
       documentWidth: 0,
-      documentHeight: 0
+      documentHeight: 0,
+      windows: [],
+      activeWindow: 0
     };
   },
   created() {},
@@ -128,7 +144,7 @@ export default {
 
     init() {
       this.documentHeight = document.documentElement.clientHeight;
-      const height = this.documentHeight - 44;
+      const height = this.documentHeight - 85;
       this.documentWidth = document.documentElement.clientWidth;
       const width = this.documentWidth - 408;
       const _this = this;
@@ -469,7 +485,7 @@ export default {
       if (bool) {
         leftMenu.style.display = "none";
         rightPanel.style.display = "none";
-        this.graph.changeSize(this.documentWidth - 4, this.documentHeight - 44);
+        this.graph.changeSize(this.documentWidth - 4, this.documentHeight - 85);
       } else {
         leftMenu.style.display = "block";
         rightPanel.style.display = "block";
@@ -494,7 +510,19 @@ export default {
           opacity: 0.3
         }
       });
-    }
+    },
+    addNewWindow() {
+      let length = this.windows.length;
+      if (length === 0) {
+        this.windows.push(2);
+      } else {
+        this.windows.push(this.windows[length - 1] + 1);
+      }
+    },
+    closeWindow(index) {
+      this.windows = this.windows.filter(item => item !== index);
+    },
+    checkoutWindow() {}
   }
 };
 </script>
@@ -541,8 +569,6 @@ export default {
 }
 .graph-container {
   position: relative;
-  border: 2px solid grey;
-  border-top: none;
   cursor: pointer;
 }
 .right-panel {
@@ -571,5 +597,10 @@ export default {
 }
 .context-menu li:hover {
   background-color: #f5f7fa;
+}
+.main-section {
+  border: 2px solid grey;
+  border-top: 0;
+  width: calc(100% - 408);
 }
 </style>
