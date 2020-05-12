@@ -5,8 +5,8 @@
       <button @click="endRunning()" v-show="running">结束</button>
       <button @click="zoomGraph(-1)">缩小</button>
       <button @click="zoomGraph(1)">放大</button>
-      <!-- <button @click="setFitView()">自动适应</button> -->
-      <!-- <button>全屏</button> -->
+      <button @click="setFitView()">自动适应</button>
+      <button>全屏</button>
     </header>
     <div class="editor-container">
       <ul class="left-menu">
@@ -26,7 +26,9 @@
         </li>
       </ul>
       <div id="graph-container" class="graph-container"></div>
-      <div class="right-panel"></div>
+      <div class="right-panel">
+        <div v-for="(item, index) in rightMenu" :key="index">{{item}}</div>
+      </div>
       <ul class="el-scrollbar__view el-select-dropdown__list context-menu" id="contextMenu">
         <li
           class="el-select-dropdown__item"
@@ -36,6 +38,15 @@
         >{{menu.name}}</li>
       </ul>
     </div>
+
+    <el-dialog title="重命名" :visible.sync="dialogFormVisible">
+      <el-input v-model="labelName" :placeholder="labelName" autocomplete="off"></el-input>
+
+      <div slot="footer" class="dialog-footer">
+        <el-button @click="dialogFormVisible = false">取 消</el-button>
+        <el-button type="primary" @click="modifyLabelName">确 定</el-button>
+      </div>
+    </el-dialog>
   </div>
 </template>
 <script>
@@ -50,15 +61,18 @@ export default {
       list: [
         {
           label: "数据源",
-          icon: "/images/database.png"
+          icon: "/images/database.png",
+          rightMenu: ["字段设置", "参数设置"]
         },
         {
           label: "归一化",
-          icon: "/images/database.png"
+          icon: "/images/database.png",
+          rightMenu: ["执行调优"]
         },
         {
           label: "调模型",
-          icon: "/images/database.png"
+          icon: "/images/database.png",
+          rightMenu: ["字段设置"]
         }
       ],
       data: {
@@ -70,7 +84,10 @@ export default {
         { key: 1, name: "重命名" },
         { key: 2, name: "删除" }
       ],
-      selectedItem: null
+      selectedItem: null,
+      rightMenu: [],
+      labelName: "",
+      dialogFormVisible: false
     };
   },
   created() {},
@@ -291,11 +308,23 @@ export default {
         menu.style.top = `${evt.clientY}px`;
         menu.style.display = "block";
         this.selectedItem = evt.item;
+        let model = evt.item._cfg.model;
+        this.rightMenu = model.rightMenu;
+        this.labelName = model.label;
       });
 
       this.graph.on("node:mouseleave", () => {
         menu.style.display = "none";
-        this.selectedItem = null;
+        // this.selectedItem = null;
+        // this.rightMenu = [];
+      });
+
+      this.graph.on("node:click", evt => {
+        let item = evt.item;
+        this.selectedItem = item;
+        let model = item._cfg.model;
+        this.rightMenu = model.rightMenu;
+        this.labelName = model.label;
       });
     },
     handleClick(item) {
@@ -303,14 +332,19 @@ export default {
       menu.style.display = "none";
       switch (item.key) {
         case 1:
-          this.graph.updateItem(this.selectedItem, {
-            label: "abc"
-          });
+          this.dialogFormVisible = true;
           break;
         case 2:
           this.graph.remove(this.selectedItem);
           break;
       }
+    },
+    modifyLabelName() {
+      this.graph.updateItem(this.selectedItem, {
+        label: this.labelName
+      });
+      this.dialogFormVisible = false;
+      // this.labelName = "";
     },
     async runGraph() {
       this.running = true;
